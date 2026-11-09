@@ -1,0 +1,1430 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALGOMATCH - Online Realtime Multiplayer</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- PeerJS Library -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap');
+        body { font-family: 'Outfit', sans-serif; user-select: none; -webkit-user-select: none; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.6); }
+        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+
+        .theme-red { background: linear-gradient(135deg, #ffffff 0%, #ffeef0 100%); border-color: #f87171; color: #991b1b; }
+        .theme-blue { background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%); border-color: #60a5fa; color: #1e40af; }
+        .theme-green { background: linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%); border-color: #4ade80; color: #166534; }
+        .theme-purple { background: linear-gradient(135deg, #ffffff 0%, #faf5ff 100%); border-color: #c084fc; color: #6b21a8; }
+        .theme-amber { background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%); border-color: #fbbf24; color: #92400e; }
+        .theme-teal { background: linear-gradient(135deg, #ffffff 0%, #f0fdfa 100%); border-color: #2dd4bf; color: #115e59; }
+        .theme-pink { background: linear-gradient(135deg, #ffffff 0%, #fdf2f8 100%); border-color: #f472b6; color: #9d174d; }
+
+        @keyframes pulse-border {
+            0%, 100% { border-color: #3b82f6; box-shadow: 0 0 15px rgba(59, 130, 246, 0.5); }
+            50% { border-color: #a855f7; box-shadow: 0 0 25px rgba(168, 85, 247, 0.8); }
+        }
+        .active-pile-glow { animation: pulse-border 2s infinite ease-in-out; }
+
+        /* Semua 84 kartu ditampilkan sebagai gambar utuh sesuai halaman PDF. */
+        .mapia-card {aspect-ratio:1/1!important;background:#fff!important;border-radius:14px!important;overflow:hidden;}
+        .mapia-card img {width:100%;height:100%;display:block;object-fit:fill;}
+        .mapia-card::before,.mapia-card::after {display:none!important;}
+        /* Bingkai kartu disadur dari desain PDF pengguna */
+        .mapia-card {background-color:#fff!important; background-size:100% 100%!important; background-position:center!important; border:0!important; border-radius:12px!important; color:#402e5c!important; overflow:hidden;}
+        .mapia-card.theme-purple {background-image:url('assets/card-purple.webp')!important;color:#8450ad!important}
+        .mapia-card.theme-pink {background-image:url('assets/card-pink.webp')!important;color:#f04c98!important}
+        .mapia-card.theme-blue {background-image:url('assets/card-blue.webp')!important;color:#507eb8!important}
+        .mapia-card.theme-red {background-image:url('assets/card-red.webp')!important;color:#ee4045!important}
+        .mapia-card.theme-amber {background-image:url('assets/card-brown.webp')!important;color:#9d7944!important}
+        .mapia-card.theme-green {background-image:url('assets/card-green.webp')!important;color:#238b56!important}
+        .mapia-card.theme-teal {background-image:url('assets/card-teal.webp')!important;color:#64b5b6!important}
+        .mapia-card .mapia-content {position:absolute;inset:24% 12% 22%;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden;}
+        .mapia-card .mapia-content canvas {max-height:100%;object-fit:contain;}
+        .mapia-card .mapia-content span {font-family:Georgia,serif;font-size:clamp(10px,1.45vw,22px);overflow-wrap:anywhere;}
+        .mapia-card .mapia-content span.italic {font-size:clamp(9px,1vw,15px);}
+        .mapia-card .mapia-tag {position:absolute;bottom:7%;left:15%;right:15%;text-align:center;font-size:10px;color:#64748b;font-weight:700;}
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col justify-between overflow-x-hidden">
+
+    <!-- HEADER / TOP BAR -->
+    <header class="bg-slate-900/90 backdrop-blur border-b border-slate-800 px-4 py-3 sticky top-0 z-40 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="bg-gradient-to-tr from-indigo-600 to-violet-500 p-2 rounded-xl text-white shadow-lg shadow-indigo-500/30">
+                <i class="fa-solid font-bold text-xl fa-shapes"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-extrabold tracking-tight bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-400 bg-clip-text text-transparent">
+                    ALGOMATCH
+                </h1>
+                <p class="text-xs text-slate-400 hidden sm:block">Online Realtime Multiplayer &bull; Math Piles Mode</p>
+            </div>
+        </div>
+
+        <div id="headerStats" class="flex items-center gap-2">
+            <div id="roomCodeBadge" class="hidden bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-xs flex items-center gap-2">
+                <span class="text-slate-400">Kode:</span>
+                <span id="displayRoomCode" class="font-mono font-bold text-amber-400">------</span>
+            </div>
+            <div id="roleBadge" class="hidden bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700 text-xs flex items-center gap-2">
+                <span id="displayPlayerRole" class="font-bold text-emerald-400">Pemain 1</span>
+            </div>
+            <button onclick="showRulesModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <i class="fa-solid fa-book-open text-sky-400"></i>
+                <span>Aturan</span>
+            </button>
+            <button id="btnSoundToggle" onclick="toggleAudio()" class="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 text-slate-300">
+                <i id="soundIcon" class="fa-solid fa-volume-high"></i>
+            </button>
+            <button id="btnEndGame" onclick="confirmEndGame()" class="hidden px-3 py-1.5 bg-rose-900/70 hover:bg-rose-800 rounded-lg border border-rose-700/80 text-xs font-bold text-rose-200">
+                <i class="fa-solid fa-power-off mr-1"></i> Keluar
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 flex flex-col justify-center">
+
+        <!-- LOBBY SCREEN -->
+        <section id="screenLobby" class="space-y-6 max-w-2xl mx-auto w-full">
+            <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+                <div class="text-center space-y-2 mb-6">
+                    <span class="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-emerald-400 bg-emerald-950/60 rounded-full border border-emerald-800">
+                        <i class="fa-solid fa-globe mr-1"></i> WebRTC • Status diperiksa saat terhubung
+                    </span>
+                    <h2 class="text-3xl sm:text-4xl font-extrabold text-white">Selamat Datang di ALGOMATCH</h2>
+                    <p class="text-sm text-slate-400">Buat Ruang sebagai Host atau Gabung dengan Kode Masuk!</p>
+                </div>
+
+                <!-- STEP 1: PILIH MODE -->
+                <div id="lobbyStep1" class="space-y-6">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button onclick="setupHostRoom()" class="flex flex-col items-center justify-center p-6 bg-gradient-to-b from-indigo-900/40 to-slate-900 border border-indigo-500/30 hover:border-indigo-500 rounded-xl transition group text-center">
+                            <div class="w-12 h-12 rounded-full bg-indigo-600/20 flex items-center justify-center text-indigo-400 mb-3 group-hover:scale-110 transition">
+                                <i class="fa-solid fa-crown text-xl"></i>
+                            </div>
+                            <h3 class="font-bold text-lg text-white">Buat Ruang (Host)</h3>
+                            <p class="text-xs text-slate-400 mt-1">Buat kode ruangan & kontrol mulai game</p>
+                        </button>
+
+                        <button onclick="showJoinInput()" class="flex flex-col items-center justify-center p-6 bg-gradient-to-b from-purple-900/40 to-slate-900 border border-purple-500/30 hover:border-purple-500 rounded-xl transition group text-center">
+                            <div class="w-12 h-12 rounded-full bg-purple-600/20 flex items-center justify-center text-purple-400 mb-3 group-hover:scale-110 transition">
+                                <i class="fa-solid fa-key text-xl"></i>
+                            </div>
+                            <h3 class="font-bold text-lg text-white">Gabung Ruang</h3>
+                            <p class="text-xs text-slate-400 mt-1">Masukkan Kode Ruang dari Host</p>
+                        </button>
+                    </div>
+
+                    <!-- Input Kode Masuk Ruangan -->
+                    <div id="joinInputArea" class="hidden p-4 bg-slate-850 border border-slate-700 rounded-xl space-y-3">
+                        <label class="block text-xs font-medium text-slate-300">Masukkan Kode Ruang (6 Digit):</label>
+                        <div class="flex gap-2">
+                            <input type="text" id="inputRoomCode" placeholder="Contoh: 884219" maxlength="6" class="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-amber-400 font-mono font-bold tracking-widest focus:outline-none focus:border-indigo-500 uppercase">
+                            <button id="btnSubmitJoin" onclick="joinRoomByCode()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold px-5 py-2 rounded-lg transition">
+                                Masuk
+                            </button>
+                        </div>
+                    </div>
+
+                    <button onclick="showRulesModal()" class="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-sm transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-book"></i> Baca Aturan & Petunjuk Bermain
+                    </button>
+                </div>
+
+                <!-- STEP 2: SETUP RUANGAN HOST -->
+                <div id="lobbyStepHost" class="hidden space-y-6">
+                    <div class="space-y-2">
+                        <label class="block text-sm font-semibold text-slate-200">Pilih Jumlah Pemain (2 - 6 Orang):</label>
+                        <div class="grid grid-cols-5 gap-2" id="playerCountSelector"></div>
+                    </div>
+
+                    <div id="setInfoBadge" class="p-3 bg-indigo-950/40 border border-indigo-800/50 rounded-xl flex items-center justify-between text-xs text-indigo-200">
+                        <div>
+                            <i class="fa-solid fa-layer-group text-indigo-400 mr-1"></i>
+                            <span id="lblSetCount">7 Set (28 Kartu)</span>
+                        </div>
+                        <div class="text-slate-400">1 Set disisakan di meja</div>
+                    </div>
+
+                    <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 flex flex-col items-center text-center space-y-2">
+                        <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Kode Masuk Ruangan Anda</span>
+                        <div class="text-4xl font-black text-amber-400 font-mono tracking-widest my-1" id="generatedRoomCode">------</div>
+                        <p class="text-xs text-slate-400 max-w-sm">Beritahukan kode 6-digit di atas kepada pemain lain untuk dimasukkan pada menu "Gabung Ruang".</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex justify-between items-center text-xs text-slate-400">
+                            <span>Pemain Terhubung Online:</span>
+                            <span id="lblJoinedCount">1 / 2</span>
+                        </div>
+                        <div id="joinedPlayersGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-2"></div>
+                    </div>
+
+                    <div class="flex gap-3 pt-2">
+                        <button onclick="resetLobby()" class="w-1/3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 rounded-xl text-sm transition">
+                            Kembali
+                        </button>
+                        <button id="btnStartGameHost" onclick="requestStartGameHost()" class="flex-1 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold py-3 rounded-xl text-sm shadow-lg shadow-emerald-900/30 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-play"></i> Mulai Permainan! (Host)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- STEP 3: WAITING CLIENT SCREEN -->
+                <div id="lobbyStepWait" class="hidden text-center space-y-6 py-6">
+                    <div class="inline-block p-4 bg-indigo-900/30 rounded-full border border-indigo-700/50 animate-bounce">
+                        <i class="fa-solid fa-hourglass-half text-3xl text-indigo-400"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xl font-bold text-white">Terhubung! Menunggu Host Memulai Permainan...</h3>
+                        <p class="text-xs text-slate-400 mt-1">Anda terhubung di Ruang: <span id="waitRoomCode" class="font-mono font-bold text-amber-400">------</span></p>
+                    </div>
+                    <div id="waitPlayerList" class="flex justify-center gap-2 flex-wrap"></div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- COUNTDOWN OVERLAY -->
+        <div id="countdownOverlay" class="fixed inset-0 bg-slate-950/90 z-50 flex flex-col items-center justify-center hidden backdrop-blur-md">
+            <span class="text-slate-400 text-lg uppercase tracking-widest font-semibold mb-2">Bersiaplah!</span>
+            <div id="countdownNumber" class="text-8xl sm:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-b from-amber-300 via-amber-400 to-amber-600 animate-pulse">
+                3
+            </div>
+            <p class="text-emerald-400 font-bold text-xl mt-4 animate-bounce">MATH PILES!</p>
+        </div>
+
+        <!-- GAMEPLAY SCREEN -->
+        <section id="screenGame" class="hidden space-y-6">
+            <div class="bg-slate-900/95 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-4">
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                    <div class="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+                        <div class="bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl flex items-center gap-2">
+                            <i class="fa-solid fa-fire text-amber-400"></i>
+                            <span class="text-xs text-slate-300">Pile Selesai: <strong id="userCompletedCount" class="text-amber-400 text-sm">0/3</strong></span>
+                        </div>
+                        <span class="text-xs text-indigo-400 font-bold uppercase tracking-wide flex items-center gap-1.5">
+                            <i class="fa-solid fa-arrows-rotate"></i> 4 Kartu Tengah (Area Tukar)
+                        </span>
+                    </div>
+
+                    <button onclick="triggerMathPilesCall()" class="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-red-600 via-rose-500 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white font-extrabold rounded-xl shadow-lg shadow-rose-900/40 transform hover:scale-105 active:scale-95 transition flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-bullhorn text-base"></i>
+                        <span>MATH PILES!</span>
+                    </button>
+                </div>
+
+                <div id="centerPoolGrid" class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 max-w-4xl mx-auto"></div>
+            </div>
+
+            <div class="space-y-3">
+                <div class="flex items-center justify-between px-1">
+                    <h3 class="text-base font-bold text-slate-200 flex items-center gap-2">
+                        <i class="fa-solid fa-layer-group text-indigo-400"></i>
+                        3 Pile Anda (Masing-masing 4 Kartu)
+                    </h3>
+                    <span class="text-xs text-slate-400 hidden sm:inline">Hanya 1 Pile yang boleh dipegang/dibuka dalam satu waktu!</span>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-5" id="pilesContainer"></div>
+            </div>
+
+            <div class="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3">
+                <span class="text-xs font-semibold text-slate-400 block mb-2">Progres Pemain Lain (Real-Time):</span>
+                <div id="opponentsProgressGrid" class="grid grid-cols-2 sm:grid-cols-5 gap-2"></div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-slate-900/50 border-t border-slate-800/50 py-3 text-center text-xs text-slate-500">
+        ALGOMATCH &bull; Algebra Piles Matching Card Game &bull; Media Pembelajaran Aljabar Interaktif
+    </footer>
+
+    <!-- MODAL POPUP -->
+    <div id="gameModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl text-center space-y-4">
+            <div id="modalIcon" class="w-16 h-16 rounded-full bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-3xl mx-auto">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h3 id="modalTitle" class="text-2xl font-extrabold text-white">---</h3>
+            <p id="modalBody" class="text-sm text-slate-300">---</p>
+            <div id="modalActions" class="pt-2">
+                <button onclick="closeModal()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition">
+                    Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL ATURAN PERMAINAN -->
+    <div id="rulesModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-3xl w-full p-6 shadow-2xl space-y-5 max-h-[85vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-xl font-extrabold text-sky-400 flex items-center gap-2">
+                    <i class="fa-solid fa-book-open"></i> ATURAN BERMAIN MATH PILES (ALGOMATCH)
+                </h3>
+                <button onclick="closeRulesModal()" class="text-slate-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+            <div class="space-y-4 text-sm text-slate-300 leading-relaxed">
+                <div class="bg-indigo-950/40 border border-indigo-800/50 p-4 rounded-xl space-y-1">
+                    <h4 class="font-bold text-indigo-300 text-base">🎯 Tujuan Permainan</h4>
+                    <p class="text-xs leading-relaxed">
+                        Menjadi pemain pertama yang berhasil menyusun <b>3 pile</b>, di mana setiap pile terdiri atas <b>4 kartu yang saling berkaitan secara matematis</b>, kemudian berteriak atau menekan tombol: <b class="text-rose-400">“MATH PILES!”</b>
+                    </p>
+                </div>
+            </div>
+            <button onclick="closeRulesModal()" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition text-sm">
+                Tutup Aturan
+            </button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT ENGINE (DIRECT HANDSHAKE SYNC) -->
+    <script>
+        // 21 kelompok × 4 gambar asli dari PDF = 84 kartu. Nomor halaman PDF = nomor kartu.
+        const ALGEBRA_SETS = [
+        {
+                "id": 1,
+                "theme": "theme-purple",
+                "cards": [
+                        {
+                                "page": 1,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 2,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 3,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 4,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 2,
+                "theme": "theme-purple",
+                "cards": [
+                        {
+                                "page": 5,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 7,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 8,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 9,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 3,
+                "theme": "theme-purple",
+                "cards": [
+                        {
+                                "page": 6,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 10,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 11,
+                                "type": "verbal"
+                        },
+                        {
+                                "page": 12,
+                                "type": "exp"
+                        }
+                ]
+        },
+        {
+                "id": 4,
+                "theme": "theme-pink",
+                "cards": [
+                        {
+                                "page": 22,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 13,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 14,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 15,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 5,
+                "theme": "theme-pink",
+                "cards": [
+                        {
+                                "page": 23,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 16,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 17,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 18,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 6,
+                "theme": "theme-pink",
+                "cards": [
+                        {
+                                "page": 24,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 19,
+                                "type": "verbal"
+                        },
+                        {
+                                "page": 20,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 21,
+                                "type": "exp"
+                        }
+                ]
+        },
+        {
+                "id": 7,
+                "theme": "theme-blue",
+                "cards": [
+                        {
+                                "page": 34,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 25,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 26,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 28,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 8,
+                "theme": "theme-blue",
+                "cards": [
+                        {
+                                "page": 35,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 27,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 29,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 30,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 9,
+                "theme": "theme-blue",
+                "cards": [
+                        {
+                                "page": 36,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 31,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 32,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 33,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 10,
+                "theme": "theme-red",
+                "cards": [
+                        {
+                                "page": 37,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 40,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 42,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 41,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 11,
+                "theme": "theme-red",
+                "cards": [
+                        {
+                                "page": 38,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 43,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 44,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 45,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 12,
+                "theme": "theme-red",
+                "cards": [
+                        {
+                                "page": 39,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 46,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 47,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 48,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 13,
+                "theme": "theme-amber",
+                "cards": [
+                        {
+                                "page": 58,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 57,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 56,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 49,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 14,
+                "theme": "theme-amber",
+                "cards": [
+                        {
+                                "page": 59,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 54,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 55,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 50,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 15,
+                "theme": "theme-amber",
+                "cards": [
+                        {
+                                "page": 60,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 52,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 53,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 51,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 16,
+                "theme": "theme-green",
+                "cards": [
+                        {
+                                "page": 61,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 68,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 69,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 67,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 17,
+                "theme": "theme-green",
+                "cards": [
+                        {
+                                "page": 62,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 72,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 71,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 70,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 18,
+                "theme": "theme-green",
+                "cards": [
+                        {
+                                "page": 63,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 64,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 65,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 66,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 19,
+                "theme": "theme-teal",
+                "cards": [
+                        {
+                                "page": 82,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 74,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 75,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 73,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 20,
+                "theme": "theme-teal",
+                "cards": [
+                        {
+                                "page": 83,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 77,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 78,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 76,
+                                "type": "verbal"
+                        }
+                ]
+        },
+        {
+                "id": 21,
+                "theme": "theme-teal",
+                "cards": [
+                        {
+                                "page": 84,
+                                "type": "graph"
+                        },
+                        {
+                                "page": 79,
+                                "type": "eq"
+                        },
+                        {
+                                "page": 80,
+                                "type": "exp"
+                        },
+                        {
+                                "page": 81,
+                                "type": "verbal"
+                        }
+                ]
+        }
+];
+
+        const PLAYER_SET_RULES = { 2: 7, 3: 10, 4: 13, 5: 16, 6: 19 };
+
+        let state = {
+            gameStarted: false,
+            gamePayload: null,
+            gameAcknowledgements: {},
+            roomCode: '',
+            isHost: false,
+            playerIndex: 0,
+            totalPlayers: 2,
+            playersList: [],
+            activePileIndex: 0,
+            selectedPileCardIndex: null,
+            centerPool: [],
+            playerPiles: [[], [], []],
+            completedPiles: [false, false, false],
+            opponentsProgress: {},
+            soundEnabled: true,
+            isGameOver: false,
+            peer: null,
+            connections: []
+        };
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playSound(type) {
+            if (!state.soundEnabled) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain); gain.connect(audioCtx.destination);
+                if (type === 'swap') {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.2, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+                } else if (type === 'complete') {
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.1); osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.2);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+                } else if (type === 'win') {
+                    osc.type = 'square'; osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.15); osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.3);
+                    osc.frequency.setValueAtTime(1046.50, audioCtx.currentTime + 0.45);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.7);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.7);
+                } else if (type === 'error') {
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(150, audioCtx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                    osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+                }
+            } catch (e) {}
+        }
+
+        function toggleAudio() {
+            state.soundEnabled = !state.soundEnabled;
+            document.getElementById('soundIcon').className = state.soundEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark text-red-400';
+        }
+
+        window.onload = function() { renderPlayerCountButtons(); };
+
+        function renderPlayerCountButtons() {
+            const container = document.getElementById('playerCountSelector');
+            container.innerHTML = '';
+            for (let i = 2; i <= 6; i++) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = `py-3 rounded-xl border text-sm font-bold transition flex flex-col items-center justify-center ${state.totalPlayers === i ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'}`;
+                btn.innerHTML = `<span>${i}</span><span class="text-[10px] opacity-75 font-normal">Pemain</span>`;
+                btn.onclick = () => selectPlayerCount(i);
+                container.appendChild(btn);
+            }
+        }
+
+        function selectPlayerCount(count) {
+            state.totalPlayers = count;
+            renderPlayerCountButtons();
+            const sets = PLAYER_SET_RULES[count];
+            document.getElementById('lblSetCount').innerText = `${sets} Set (${sets * 4} Kartu)`;
+            if (state.isHost) {
+                broadcastMessage({ type: 'UPDATE_CONFIG', totalPlayers: state.totalPlayers });
+                updateLobbyPlayersUI();
+            }
+        }
+
+        // Status koneksi PeerJS: log yang jelas untuk pengujian di kedua perangkat.
+        function peerLog(role, event, detail = '') {
+            console.info(`[ALGOMATCH ${role}] ${event}`, detail);
+        }
+
+        function setupHostRoom() {
+            state.isHost = true;
+            state.playerIndex = 0;
+            state.roomCode = Math.floor(100000 + Math.random() * 900000).toString();
+            state.playersList = [{ id: 0, name: 'Pemain 1 (Host)' }];
+            document.getElementById('lobbyStep1').classList.add('hidden');
+            document.getElementById('lobbyStepHost').classList.remove('hidden');
+            document.getElementById('generatedRoomCode').innerText = state.roomCode;
+            if (state.peer && !state.peer.destroyed) state.peer.destroy();
+            const peer = new Peer(`algomatch_room_${state.roomCode}`, {debug: 2});
+            state.peer = peer;
+            peer.on('open', id => {
+                peerLog('HOST', 'Signaling siap', id);
+                updateLobbyPlayersUI();
+            });
+            peer.on('error', err => {
+                peerLog('HOST', 'Peer error', {type: err.type, message: err.message});
+                showModal('Koneksi Host Bermasalah', `${err.type || 'error'}: ${err.message || 'Server PeerJS tidak dapat diakses.'}`);
+            });
+            peer.on('disconnected', () => {
+                peerLog('HOST', 'Signaling terputus; mencoba reconnect');
+                if (!peer.destroyed && peer.disconnected) {
+                    try { peer.reconnect(); } catch (err) { peerLog('HOST', 'Reconnect gagal', err.message); }
+                }
+            });
+            peer.on('connection', conn => {
+                peerLog('HOST', 'Permintaan koneksi diterima', conn.peer);
+                conn.on('open', () => {
+                    if (state.gameStarted || state.playersList.length >= state.totalPlayers) {
+                        conn.send({type:'JOIN_REJECT',reason:'Ruang penuh atau permainan sudah dimulai.'});
+                        setTimeout(() => conn.close(), 400);
+                        return;
+                    }
+                    const newIndex = state.playersList.length;
+                    conn.playerIndex = newIndex;
+                    state.connections.push(conn);
+                    state.playersList.push({ id:newIndex, name:`Pemain ${newIndex+1}` });
+                    conn.send({type:'JOIN_ACCEPT',playerIndex:newIndex,totalPlayers:state.totalPlayers,playersList:state.playersList});
+                    broadcastMessage({type:'LOBBY_UPDATE',playersList:state.playersList});
+                    updateLobbyPlayersUI();
+                    peerLog('HOST', 'Pemain bergabung', newIndex + 1);
+                });
+                conn.on('data', data => handleHostIncomingData(data, conn));
+                conn.on('close', () => {
+                    state.connections = state.connections.filter(c => c !== conn);
+                    if (!state.gameStarted) {
+                        state.playersList = [{id:0,name:'Pemain 1 (Host)'}, ...state.connections.map((c,i) => {
+                            c.playerIndex = i+1;
+                            return {id:i+1,name:`Pemain ${i+2}`};
+                        })];
+                        state.connections.forEach(c => { if (c.open) c.send({type:'JOIN_ACCEPT',playerIndex:c.playerIndex,totalPlayers:state.totalPlayers,playersList:state.playersList}); });
+                        updateLobbyPlayersUI();
+                    }
+                });
+                conn.on('error', err => peerLog('HOST', 'Data connection error', err.message));
+            });
+        }
+
+        function showJoinInput() { document.getElementById('joinInputArea').classList.remove('hidden'); }
+
+        function joinRoomByCode() {
+            const code = document.getElementById('inputRoomCode').value.trim();
+            if (!/^\d{6}$/.test(code)) { showModal('Kode Tidak Valid','Masukkan tepat 6 digit angka.'); return; }
+            const btn = document.getElementById('btnSubmitJoin');
+            btn.innerText = 'Menghubungkan...'; btn.disabled = true;
+            state.isHost = false; state.roomCode = code;
+            if (state.peer && !state.peer.destroyed) state.peer.destroy();
+            const peer = new Peer({debug: 2});
+            state.peer = peer;
+            let joined = false;
+            let failed = false;
+            let conn = null;
+            const finishFailure = msg => {
+                if (joined || failed) return;
+                failed = true;
+                clearTimeout(timeout);
+                btn.disabled = false; btn.innerText = 'Masuk';
+                peerLog('PLAYER 2', 'Gagal bergabung', msg);
+                showModal('Koneksi Gagal', msg);
+                if (conn && conn.open) conn.close();
+                if (!peer.destroyed) peer.destroy();
+            };
+            const timeout = setTimeout(() => {
+                finishFailure('Belum berhasil terhubung dalam 25 detik. Periksa status PeerJS pada kedua perangkat melalui Console.');
+            }, 25000);
+            peer.on('open', id => {
+                peerLog('PLAYER 2', 'Signaling siap', id);
+                if (failed) return;
+                conn = peer.connect(`algomatch_room_${code}`, {reliable:true});
+                state.connections = [conn];
+                peerLog('PLAYER 2', 'Mencoba koneksi ke Host', conn.peer);
+                conn.on('open', () => peerLog('PLAYER 2', 'Data channel terbuka; menunggu JOIN_ACCEPT'));
+                conn.on('data', data => {
+                    if (failed) return;
+                    if (data.type === 'JOIN_REJECT') {
+                        finishFailure(data.reason || 'Host menolak koneksi.');
+                        return;
+                    }
+                    if (data.type === 'JOIN_ACCEPT') {
+                        joined = true;
+                        clearTimeout(timeout);
+                        btn.disabled = false; btn.innerText = 'Masuk';
+                        peerLog('PLAYER 2', 'Berhasil bergabung', data.playerIndex);
+                    }
+                    handleClientIncomingData(data);
+                });
+                conn.on('close', () => {
+                    if (!joined) finishFailure('Koneksi ke Host tertutup sebelum berhasil bergabung.');
+                    else if (!state.isGameOver) showModal('Terputus dari Host','Koneksi terputus. Muat ulang halaman untuk bergabung kembali.');
+                });
+                conn.on('error', err => finishFailure(`Data channel: ${err.message || 'Koneksi ke Host gagal.'}`));
+            });
+            peer.on('disconnected', () => {
+                peerLog('PLAYER 2', 'Signaling terputus');
+                if (!joined) finishFailure('Lost connection to server (signaling PeerJS). Periksa akses server PeerJS atau coba lagi nanti.');
+            });
+            peer.on('error', err => finishFailure(`PeerJS ${err.type || 'error'}: ${err.message || 'Server tidak dapat diakses.'}`));
+        }
+
+        function resetLobby() {
+            if (state.peer) state.peer.destroy();
+            window.location.reload();
+        }
+
+        function broadcastMessage(msg) {
+            state.connections.forEach(conn => {
+                if (conn && conn.open) conn.send(msg);
+            });
+        }
+
+        function handleHostIncomingData(data, conn) {
+            if (data.type === 'START_GAME_ACK') {
+                state.gameAcknowledgements[conn.playerIndex] = true;
+            } else if (data.type === 'REQUEST_GAME_SYNC') {
+                if (state.gamePayload && conn.open) conn.send(state.gamePayload);
+            } else if (data.type === 'CENTER_POOL_SWAP') {
+                state.centerPool[data.centerIdx] = data.newCard;
+                renderCenterPool();
+                broadcastMessage(data);
+            } else if (data.type === 'PLAYER_UPDATE_PROGRESS') {
+                updateOpponentProgress(data.playerIndex, data.completedCount);
+                broadcastMessage(data);
+            } else if (data.type === 'MATH_PILES_CALL') {
+                // Klien mengirim pile untuk diverifikasi oleh host.
+                const piles = data.piles;
+                if (conn.playerIndex === data.playerIndex && Array.isArray(piles) && piles.length === 3 && piles.every(isSetComplete)) {
+                    verifyMathPilesCall(data.playerIndex, piles);
+                } else conn.send({type:'INVALID_CALL'});
+            }
+        }
+
+        function handleClientIncomingData(data) {
+            if (data.type === 'JOIN_ACCEPT') {
+                state.playerIndex = data.playerIndex;
+                state.totalPlayers = data.totalPlayers;
+                state.playersList = data.playersList;
+                document.getElementById('lobbyStep1').classList.add('hidden');
+                document.getElementById('joinInputArea').classList.add('hidden');
+                document.getElementById('lobbyStepWait').classList.remove('hidden');
+                document.getElementById('waitRoomCode').innerText = state.roomCode;
+                document.getElementById('waitPlayerList').innerHTML = state.playersList.map(p => `<span class="px-3 py-1 bg-indigo-950 border border-indigo-700 rounded-lg text-xs font-bold text-indigo-300">${p.name}</span>`).join('');
+            } else if (data.type === 'LOBBY_UPDATE') {
+                state.playersList = data.playersList;
+                document.getElementById('waitPlayerList').innerHTML = state.playersList.map(p => `<span class="px-3 py-1 bg-indigo-950 border border-indigo-700 rounded-lg text-xs font-bold text-indigo-300">${p.name}</span>`).join('');
+            } else if (data.type === 'START_GAME_SYNC') {
+                if (!state.gameStarted) startGameClient(data);
+                if (state.connections[0]?.open) state.connections[0].send({type:'START_GAME_ACK',playerIndex:state.playerIndex});
+            } else if (data.type === 'CENTER_POOL_SWAP') {
+                state.centerPool[data.centerIdx] = data.newCard;
+                renderCenterPool();
+            } else if (data.type === 'PLAYER_UPDATE_PROGRESS') {
+                if (data.playerIndex !== state.playerIndex) {
+                    updateOpponentProgress(data.playerIndex, data.completedCount);
+                }
+            } else if (data.type === 'INVALID_CALL') {
+                showModal('Belum Tepat','Tiga pile belum lengkap atau tidak sesuai.');
+            } else if (data.type === 'GAME_OVER') {
+                showVictoryModal(data.winnerName, data.winnerIndex === state.playerIndex);
+            }
+        }
+
+        function updateLobbyPlayersUI() {
+            document.getElementById('lblJoinedCount').innerText = `${state.playersList.length} / ${state.totalPlayers}`;
+            const grid = document.getElementById('joinedPlayersGrid');
+            grid.innerHTML = '';
+            for (let i = 0; i < state.totalPlayers; i++) {
+                const player = state.playersList[i];
+                const card = document.createElement('div');
+                card.className = `p-3 rounded-xl border text-xs font-semibold flex items-center justify-between ${player ? 'bg-indigo-950/60 border-indigo-700 text-indigo-200' : 'bg-slate-900 border-slate-800 text-slate-500 border-dashed'}`;
+                card.innerHTML = player ? 
+                    `<span><i class="fa-solid fa-user-check text-emerald-400 mr-2"></i>${player.name}</span>` :
+                    `<span><i class="fa-solid fa-clock mr-2"></i>Menunggu...</span>`;
+                grid.appendChild(card);
+            }
+        }
+
+        function requestStartGameHost() {
+            if (!state.isHost || state.gameStarted) return;
+            if (state.playersList.length !== state.totalPlayers || state.connections.filter(c => c.open).length !== state.totalPlayers - 1) {
+                showModal('Pemain Belum Lengkap',`Menunggu ${state.totalPlayers} pemain benar-benar terhubung. Saat ini ${state.connections.filter(c=>c.open).length+1} pemain.`);
+                return;
+            }
+            const numSets = PLAYER_SET_RULES[state.totalPlayers];
+            const shuffledSets = [...ALGEBRA_SETS].sort(() => Math.random() - 0.5).slice(0, numSets);
+
+            let fullDeck = [];
+            shuffledSets.forEach(group => {
+                group.cards.forEach(entry => fullDeck.push({
+                    setId: group.id, theme: group.theme, type: entry.type,
+                    page: entry.page, image: `assets/cards/card-${String(entry.page).padStart(2, '0')}.webp`
+                }));
+            });
+
+            fullDeck.sort(() => Math.random() - 0.5);
+
+            const deals = {};
+            state.playersList.forEach((p, idx) => {
+                deals[idx] = [fullDeck.splice(0, 4), fullDeck.splice(0, 4), fullDeck.splice(0, 4)];
+            });
+
+            const centerPool = fullDeck.splice(0, 4);
+
+            const payload = {
+                type: 'START_GAME_SYNC',
+                deals: deals,
+                centerPool: centerPool,
+                playersList: state.playersList
+            };
+
+            state.gamePayload = payload;
+            state.gameAcknowledgements = {};
+            broadcastMessage(payload);
+            // Retry terbatas untuk klien yang belum mengonfirmasi penerimaan.
+            let retries = 0;
+            const retryTimer = setInterval(() => {
+                if (++retries > 8) {clearInterval(retryTimer);return;}
+                state.connections.forEach(conn => {
+                    if (conn.open && !state.gameAcknowledgements[conn.playerIndex]) conn.send(payload);
+                });
+                if (state.connections.every(c => state.gameAcknowledgements[c.playerIndex])) clearInterval(retryTimer);
+            }, 1200);
+            startGameClient(payload);
+        }
+
+        function startGameClient(payload) {
+            if (state.gameStarted) return;
+            state.gameStarted = true;
+            state.centerPool = payload.centerPool;
+            state.playerPiles = payload.deals[state.playerIndex] || payload.deals[0];
+            state.completedPiles = [false, false, false];
+            state.playersList = payload.playersList;
+
+            document.getElementById('screenLobby').classList.add('hidden');
+            document.getElementById('lobbyStepWait').classList.add('hidden');
+            document.getElementById('btnEndGame').classList.remove('hidden');
+            document.getElementById('roomCodeBadge').classList.remove('hidden');
+            document.getElementById('roleBadge').classList.remove('hidden');
+            document.getElementById('displayRoomCode').innerText = state.roomCode;
+            document.getElementById('displayPlayerRole').innerText = state.playersList[state.playerIndex]?.name || `Pemain ${state.playerIndex + 1}`;
+
+            const overlay = document.getElementById('countdownOverlay');
+            const num = document.getElementById('countdownNumber');
+            overlay.classList.remove('hidden');
+
+            let count = 3;
+            num.innerText = count;
+            const timer = setInterval(() => {
+                count--;
+                if (count > 0) {
+                    num.innerText = count;
+                } else {
+                    clearInterval(timer);
+                    overlay.classList.add('hidden');
+                    document.getElementById('screenGame').classList.remove('hidden');
+                    renderFullGameBoard();
+                }
+            }, 700);
+        }
+
+        function renderFullGameBoard() {
+            renderCenterPool();
+            renderPlayerPiles();
+            renderOpponentsProgress();
+        }
+
+        function renderCenterPool() {
+            const container = document.getElementById('centerPoolGrid');
+            container.innerHTML = '';
+            state.centerPool.forEach((card, idx) => {
+                const el = document.createElement('div');
+                el.className = 'mapia-card cursor-pointer transition-transform hover:-translate-y-1 shadow-lg relative aspect-[3/4]';
+                el.onclick = () => swapWithCenter(idx);
+                el.innerHTML = renderCardContent(card);
+                container.appendChild(el);
+            });
+        }
+
+        function renderPlayerPiles() {
+            const container = document.getElementById('pilesContainer');
+            container.innerHTML = '';
+
+            state.playerPiles.forEach((pile, pileIdx) => {
+                const isActive = state.activePileIndex === pileIdx;
+                const isCompleted = state.completedPiles[pileIdx];
+
+                const pileBox = document.createElement('div');
+                pileBox.className = `rounded-2xl p-4 border-2 transition-all ${
+                    isCompleted ? 'bg-emerald-950/30 border-emerald-500/60' :
+                    isActive ? 'bg-slate-900 border-indigo-500 active-pile-glow' : 'bg-slate-900/60 border-slate-800 opacity-80'
+                }`;
+
+                pileBox.innerHTML = `
+                    <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+                        <div class="flex items-center gap-2">
+                            <span class="text-sm font-black ${isCompleted ? 'text-emerald-400' : isActive ? 'text-indigo-400' : 'text-slate-400'}">
+                                PILE ${pileIdx + 1}
+                            </span>
+                            ${isCompleted ? '<span class="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/40"><i class="fa-solid fa-check mr-1"></i>SELESAI</span>' : ''}
+                        </div>
+                        ${!isCompleted ? `
+                            <button onclick="selectActivePile(${pileIdx})" class="px-3 py-1 text-xs rounded-lg font-bold transition ${isActive ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}">
+                                ${isActive ? 'Pegang/Aktif' : 'Pilih Pile Ini'}
+                            </button>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        ${pile.map((card, cardIdx) => renderPileCardItem(card, pileIdx, cardIdx, isActive, isCompleted)).join('')}
+                    </div>
+                `;
+                container.appendChild(pileBox);
+            });
+
+
+        }
+
+        function renderPileCardItem(card, pileIdx, cardIdx, isActive, isCompleted) {
+            const selected = isActive && state.selectedPileCardIndex === cardIdx;
+            if (!isActive && !isCompleted) return `<div onclick="selectActivePile(${pileIdx})" class="aspect-[3/4] bg-indigo-950 border border-indigo-800 rounded-xl flex flex-col items-center justify-center cursor-pointer"><i class="fa-solid fa-lock mb-2"></i><span class="text-xs">Tertutup</span></div>`;
+            return `<div onclick="selectCardInPile(${cardIdx})" class="mapia-card relative aspect-[3/4] cursor-pointer ${selected?'ring-4 ring-amber-400 scale-95':''}">${renderCardContent(card)}</div>`;
+        }
+
+        function renderCardContent(card) {
+            const page = Number(card.page);
+            if (!Number.isInteger(page) || page < 1 || page > 84) return '<span>Kartu tidak tersedia</span>';
+            return `<img src="assets/cards/card-${String(page).padStart(2, '0')}.webp" alt="Kartu aljabar nomor ${page}" loading="eager" draggable="false" class="w-full h-full object-fill select-none" />`;
+        }
+
+        function drawCartesianGraph(canvasId, m, c) {
+            const canvas = document.getElementById(canvasId);
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, w, h);
+
+            const originX = w / 2;
+            const originY = h / 2;
+            const step = 14;
+
+            ctx.strokeStyle = '#e2e8f0';
+            ctx.lineWidth = 1;
+            for (let x = originX % step; x <= w; x += step) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+            }
+            for (let y = originY % step; y <= h; y += step) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+            }
+
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1.8;
+
+            ctx.beginPath(); ctx.moveTo(4, originY); ctx.lineTo(w - 4, originY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(w - 8, originY - 3); ctx.lineTo(w - 2, originY); ctx.lineTo(w - 8, originY + 3);
+            ctx.fillStyle = '#1e293b'; ctx.fill();
+
+            ctx.beginPath(); ctx.moveTo(originX, h - 4); ctx.lineTo(originX, 4); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(originX - 3, 8); ctx.lineTo(originX, 2); ctx.lineTo(originX + 3, 8); ctx.fill();
+
+            ctx.fillStyle = '#0f172a';
+            ctx.font = 'bold 9px sans-serif';
+            ctx.textAlign = 'center';
+
+            [-4, -2, 2, 4].forEach(val => {
+                const px = originX + val * step;
+                if (px > 10 && px < w - 10) {
+                    ctx.beginPath(); ctx.moveTo(px, originY - 2); ctx.lineTo(px, originY + 2); ctx.stroke();
+                    ctx.fillText(val, px, originY + 11);
+                }
+            });
+
+            [-4, -2, 2, 4].forEach(val => {
+                const py = originY - val * step;
+                if (py > 10 && py < h - 10) {
+                    ctx.beginPath(); ctx.moveTo(originX - 2, py); ctx.lineTo(originX + 2, py); ctx.stroke();
+                    ctx.fillText(val, originX - 8, py + 3);
+                }
+            });
+
+            ctx.fillText('x', w - 8, originY - 4);
+            ctx.fillText('y', originX + 8, 11);
+
+            ctx.strokeStyle = '#dc2626';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+
+            const xMin = -10; const xMax = 10;
+            const y1 = m * xMin + c; const y2 = m * xMax + c;
+            const cx1 = originX + xMin * step; const cy1 = originY - y1 * step;
+            const cx2 = originX + xMax * step; const cy2 = originY - y2 * step;
+
+            ctx.moveTo(cx1, cy1); ctx.lineTo(cx2, cy2); ctx.stroke();
+        }
+
+        function selectActivePile(pileIdx) {
+            if (state.completedPiles[pileIdx]) return;
+            state.activePileIndex = pileIdx;
+            state.selectedPileCardIndex = null;
+            renderPlayerPiles();
+        }
+
+        function selectCardInPile(cardIdx) {
+            if (state.completedPiles[state.activePileIndex]) return;
+            state.selectedPileCardIndex = cardIdx;
+            renderPlayerPiles();
+        }
+
+        function swapWithCenter(centerIdx) {
+            if (state.completedPiles[state.activePileIndex]) {
+                showModal('Pile Sudah Selesai', 'Pile ini telah selesai disusun. Silakan kerjakan pile yang lain.');
+                return;
+            }
+            if (state.selectedPileCardIndex === null) {
+                showModal('Pilih Kartu Pile', 'Pilih 1 kartu di pile aktif Anda terlebih dahulu sebelum bertukar dengan kartu tengah!');
+                return;
+            }
+
+            const activePile = state.playerPiles[state.activePileIndex];
+            const oldCard = activePile[state.selectedPileCardIndex];
+            const newCenterCard = oldCard;
+
+            activePile[state.selectedPileCardIndex] = state.centerPool[centerIdx];
+            state.centerPool[centerIdx] = newCenterCard;
+
+            playSound('swap');
+            state.selectedPileCardIndex = null;
+
+            const swapPayload = { type: 'CENTER_POOL_SWAP', centerIdx: centerIdx, newCard: newCenterCard };
+            if (state.isHost) broadcastMessage(swapPayload);
+            else if (state.connections[0]) state.connections[0].send(swapPayload);
+
+            checkActivePileCompletion(state.activePileIndex);
+            renderFullGameBoard();
+        }
+
+        function isSetComplete(pile) {
+            if (pile.length !== 4) return false;
+            const firstSetId = pile[0].setId;
+            const matched = pile.every(c => c.setId === firstSetId);
+            const types = pile.map(c => c.type);
+            return matched && types.includes('exp') && types.includes('eq') && types.includes('verbal') && types.includes('graph');
+        }
+
+        function checkActivePileCompletion(pileIdx) {
+            const pile = state.playerPiles[pileIdx];
+            if (isSetComplete(pile) && !state.completedPiles[pileIdx]) {
+                state.completedPiles[pileIdx] = true;
+                playSound('complete');
+                
+                const completedCount = state.completedPiles.filter(Boolean).length;
+                document.getElementById('userCompletedCount').innerText = `${completedCount}/3`;
+
+                const progPayload = { type: 'PLAYER_UPDATE_PROGRESS', playerIndex: state.playerIndex, completedCount: completedCount };
+                if (state.isHost) broadcastMessage(progPayload);
+                else if (state.connections[0]) state.connections[0].send(progPayload);
+
+                if (completedCount === 3) {
+                    showModal('Siap Berteriak!', 'Ketiga Pile Anda telah selesai! Klik tombol "MATH PILES!" untuk mengklaim kemenangan!');
+                }
+            }
+        }
+
+        function updateOpponentProgress(playerIdx, completedCount) {
+            state.opponentsProgress[playerIdx] = completedCount;
+            renderOpponentsProgress();
+        }
+
+        function renderOpponentsProgress() {
+            const container = document.getElementById('opponentsProgressGrid');
+            container.innerHTML = '';
+            state.playersList.forEach((p, idx) => {
+                if (idx !== state.playerIndex) {
+                    const count = state.opponentsProgress[idx] || 0;
+                    const badge = document.createElement('div');
+                    badge.className = 'bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-lg text-xs flex items-center justify-between';
+                    badge.innerHTML = `
+                        <span class="text-slate-300 font-semibold truncate"><i class="fa-solid fa-user text-sky-400 mr-1.5"></i>${p.name}</span>
+                        <span class="font-bold text-amber-400 ml-2">${count}/3 Pile</span>
+                    `;
+                    container.appendChild(badge);
+                }
+            });
+        }
+
+        function triggerMathPilesCall() {
+            if (state.isHost) {
+                verifyMathPilesCall(state.playerIndex);
+            } else if (state.connections[0]) {
+                state.connections[0].send({ type: 'MATH_PILES_CALL', playerIndex: state.playerIndex, piles: state.playerPiles });
+            }
+        }
+
+        function verifyMathPilesCall(callingPlayerIdx, submittedPiles = null) {
+            let allCorrect = submittedPiles ? submittedPiles.length === 3 && submittedPiles.every(isSetComplete) : callingPlayerIdx === state.playerIndex;
+            if (!submittedPiles && callingPlayerIdx === state.playerIndex) {
+                for (let i = 0; i < 3; i++) {
+                    if (!isSetComplete(state.playerPiles[i])) { allCorrect = false; break; }
+                }
+            }
+
+            if (allCorrect) {
+                state.isGameOver = true; playSound('win');
+                const winnerName = state.playersList[callingPlayerIdx]?.name || `Pemain ${callingPlayerIdx + 1}`;
+                
+                const winPayload = { type: 'GAME_OVER', winnerName: winnerName, winnerIndex: callingPlayerIdx };
+                broadcastMessage(winPayload);
+                showVictoryModal(winnerName, callingPlayerIdx === state.playerIndex);
+            } else {
+                playSound('error');
+                showModal('Belum Tepat!', 'Beberapa kartu di pile Anda belum membentuk set aljabar yang sebanding secara tepat. Permainan dilanjutkan!');
+            }
+        }
+
+        function confirmEndGame() {
+            if (confirm("Apakah Anda yakin ingin keluar dari permainan?")) window.location.reload();
+        }
+
+        function showVictoryModal(winnerName, isSelf) {
+            if (isSelf) confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+            const title = isSelf ? '🏆 KAMU MENANG!' : '🎮 PERMAINAN SELESAI!';
+            const message = isSelf ? 
+                'Selamat! Kamu berhasil menyusun 3 MATH PILES aljabar dengan benar secara cepat!' :
+                `Pemain <strong>${winnerName}</strong> berhasil menyusun 3 MATH PILES terlebih dahulu.`;
+
+            document.getElementById('modalIcon').innerHTML = isSelf ? 
+                '<i class="fa-solid fa-trophy text-amber-400"></i>' : 
+                '<i class="fa-solid fa-medal text-rose-400"></i>';
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerHTML = message;
+            document.getElementById('modalActions').innerHTML = `
+                <button onclick="window.location.reload()" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-bold rounded-xl shadow-lg">
+                    Main Lagi
+                </button>
+            `;
+            document.getElementById('gameModal').classList.remove('hidden');
+        }
+
+        function showModal(title, text) {
+            document.getElementById('modalIcon').innerHTML = '<i class="fa-solid fa-circle-info text-indigo-400"></i>';
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalBody').innerText = text;
+            document.getElementById('modalActions').innerHTML = `
+                <button onclick="closeModal()" class="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl">
+                    Mengerti
+                </button>
+            `;
+            document.getElementById('gameModal').classList.remove('hidden');
+        }
+
+        function closeModal() { document.getElementById('gameModal').classList.add('hidden'); }
+        function showRulesModal() { document.getElementById('rulesModal').classList.remove('hidden'); }
+        function closeRulesModal() { document.getElementById('rulesModal').classList.add('hidden'); }
+    </script>
+</body>
+</html>
