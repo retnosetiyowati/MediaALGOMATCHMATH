@@ -850,7 +850,36 @@
             console.info(`[ALGOMATCH ${role}] ${event}`, detail);
         }
 
-        function setupHostRoom() {
+        // Konfigurasi TURN diambil dari Cloudflare Worker, bukan disimpan di GitHub.
+        const ALGOMATCH_ICE_ENDPOINT = 'https://algomatch-turn.retno-setiyowati-2403116.workers.dev/ice';
+        async function loadPeerOptions() {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 12000);
+            try {
+                const response = await fetch(ALGOMATCH_ICE_ENDPOINT, {
+                    method: 'GET', mode: 'cors', cache: 'no-store', signal: controller.signal
+                });
+                if (!response.ok) throw new Error(`Worker HTTP ${response.status}`);
+                const payload = await response.json();
+                if (!Array.isArray(payload.iceServers) || !payload.iceServers.length) {
+                    throw new Error('Respons Worker tidak memiliki iceServers');
+                }
+                const iceServers = payload.iceServers.filter(server =>
+                    server && (typeof server.urls === 'string' ||
+                    (Array.isArray(server.urls) && server.urls.length > 0))
+                );
+                if (!iceServers.length || !iceServers.some(server =>
+                    (Array.isArray(server.urls) ? server.urls : [server.urls]).some(url =>
+                        typeof url === 'string' && /^(turn|turns):/i.test(url)
+                    ) && server.username && server.credential
+                )) throw new Error('Konfigurasi TURN tidak lengkap');
+                return { debug: 2, config: { iceServers, iceTransportPolicy: 'all' } };
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        async function setupHostRoom() {
             state.isHost = true;
             state.playerIndex = 0;
             state.roomCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -859,7 +888,15 @@
             document.getElementById('lobbyStepHost').classList.remove('hidden');
             document.getElementById('generatedRoomCode').innerText = state.roomCode;
             if (state.peer && !state.peer.destroyed) state.peer.destroy();
-            const peer = new Peer(`algomatch_room_${state.roomCode}`, {debug: 2});
+            let peerOptions;
+            try {
+                peerOptions = await loadPeerOptions();
+            } catch (err) {
+                peerLog('HOST', 'Konfigurasi TURN gagal', err.message);
+                showModal('TURN Tidak Tersedia', 'Tidak dapat mengambil konfigurasi koneksi dari Cloudflare. Periksa internet dan Worker, lalu coba Buat Ruang lagi.');
+                return;
+            }
+            const peer = new Peer(`algomatch_room_${state.roomCode}`, peerOptions);
             state.peer = peer;
             peer.on('open', id => {
                 peerLog('HOST', 'Signaling siap', id);
@@ -910,14 +947,23 @@
 
         function showJoinInput() { document.getElementById('joinInputArea').classList.remove('hidden'); }
 
-        function joinRoomByCode() {
+        async function joinRoomByCode() {
             const code = document.getElementById('inputRoomCode').value.trim();
             if (!/^\d{6}$/.test(code)) { showModal('Kode Tidak Valid','Masukkan tepat 6 digit angka.'); return; }
             const btn = document.getElementById('btnSubmitJoin');
             btn.innerText = 'Menghubungkan...'; btn.disabled = true;
             state.isHost = false; state.roomCode = code;
             if (state.peer && !state.peer.destroyed) state.peer.destroy();
-            const peer = new Peer({debug: 2});
+            let peerOptions;
+            try {
+                peerOptions = await loadPeerOptions();
+            } catch (err) {
+                peerLog('PLAYER', 'Konfigurasi TURN gagal', err.message);
+                btn.disabled = false; btn.innerText = 'Masuk';
+                showModal('TURN Tidak Tersedia', 'Tidak dapat mengambil konfigurasi koneksi dari Cloudflare. Periksa internet dan Worker, lalu coba bergabung lagi.');
+                return;
+            }
+            const peer = new Peer(peerOptions);
             state.peer = peer;
             let joined = false;
             let failed = false;
@@ -933,8 +979,8 @@
                 if (!peer.destroyed) peer.destroy();
             };
             const timeout = setTimeout(() => {
-                finishFailure('Belum berhasil terhubung dalam 25 detik. Periksa status PeerJS pada kedua perangkat melalui Console.');
-            }, 25000);
+                finishFailure('Belum berhasil terhubung dalam 40 detik. Periksa status PeerJS pada kedua perangkat melalui Console.');
+            }, 40000);
             peer.on('open', id => {
                 peerLog('PLAYER 2', 'Signaling siap', id);
                 if (failed) return;
